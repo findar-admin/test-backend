@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchPaymentBreakdown, createPaymentIntent, PaymentBreakdown, RevolutPaymentResponse } from '@/lib/api';
+import { fetchPaymentBreakdown, createPaymentIntent, PaymentBreakdown, RevolutPaymentResponse, isRevolutPaymentResponse } from '@/lib/api';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
@@ -78,18 +78,18 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
         throw new Error(stripeError.message);
       }
 
-      const amount = selectedPaymentType === 'SECURITY_DEPOSIT'
-        ? paymentBreakdown.payments.find(p => p.paymentType === 'SECURITY_DEPOSIT')?.amount || 0
-        : paymentBreakdown.payments.reduce((sum, payment) => sum + payment.amount, 0);
-
-      const { clientSecret } = await createPaymentIntent(
+      const response = await createPaymentIntent(
         token,
         metadata.rentalOrderId,
         selectedPaymentType,
         'STRIPE'
       );
 
-      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      if (isRevolutPaymentResponse(response)) {
+        throw new Error('Unexpected Revolut response for Stripe payment');
+      }
+
+      const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(response.clientSecret, {
         payment_method: paymentMethod.id,
       });
 
@@ -113,6 +113,39 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
     }
   };
 
+  // const handleRevolutPayment = async () => {
+  //   if (!paymentBreakdown) {
+  //     setError('Payment breakdown is not available.');
+  //     return;
+  //   }
+
+  //   setProcessing(true);
+
+  //   try {
+  //     const response = await createPaymentIntent(
+  //       token,
+  //       metadata.rentalOrderId,
+  //       selectedPaymentType,
+  //       'REVOLUT'
+  //     );
+
+  //     if (!isRevolutPaymentResponse(response)) {
+  //       throw new Error('Invalid Revolut payment response');
+  //     }
+
+  //     setRevolutRedirectUrl(response.redirectUrl);
+  //     setPaymentSuccess(true);
+  //     setError(null);
+  //     // You can choose to automatically redirect the user or provide a button to redirect
+  //     // window.location.href = response.redirectUrl;
+  //   } catch (err) {
+  //     setPaymentSuccess(false);
+  //     setError(err instanceof Error ? err.message : 'An error occurred during Revolut payment setup.');
+  //   } finally {
+  //     setProcessing(false);
+  //   }
+  // };
+
   const handleRevolutPayment = async () => {
     if (!paymentBreakdown) {
       setError('Payment breakdown is not available.');
@@ -122,25 +155,23 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
     setProcessing(true);
 
     try {
-      const { clientSecret } = await createPaymentIntent(
+      const response = await createPaymentIntent(
         token,
         metadata.rentalOrderId,
         selectedPaymentType,
         'REVOLUT'
       );
 
-      // Cast the response to RevolutPaymentResponse
-      const revolutResponse = clientSecret as unknown as RevolutPaymentResponse;
-
-      if (revolutResponse.paymentProvider !== 'revolut' || !revolutResponse.redirectUrl) {
+      if (!isRevolutPaymentResponse(response)) {
         throw new Error('Invalid Revolut payment response');
       }
 
-      setRevolutRedirectUrl(revolutResponse.redirectUrl);
+      setRevolutRedirectUrl(response.redirectUrl);
       setPaymentSuccess(true);
       setError(null);
-      // You can choose to automatically redirect the user or provide a button to redirect
-      // window.location.href = revolutResponse.redirectUrl;
+
+      // Automatically redirect to Revolut payment page
+      window.location.href = response.redirectUrl;
     } catch (err) {
       setPaymentSuccess(false);
       setError(err instanceof Error ? err.message : 'An error occurred during Revolut payment setup.');
@@ -148,6 +179,130 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
       setProcessing(false);
     }
   };
+
+  // const handleStripePayment = async () => {
+  //   if (!stripe || !elements || !paymentBreakdown) {
+  //     setError('Payment cannot be processed at this time.');
+  //     return;
+  //   }
+
+  //   setProcessing(true);
+
+  //   try {
+  //     const { error: stripeError, paymentMethod } = await stripe.createPaymentMethod({
+  //       type: 'card',
+  //       card: elements.getElement(CardElement)!,
+  //     });
+
+  //     if (stripeError) {
+  //       throw new Error(stripeError.message);
+  //     }
+
+  //     const amount = selectedPaymentType === 'SECURITY_DEPOSIT'
+  //       ? paymentBreakdown.payments.find(p => p.paymentType === 'SECURITY_DEPOSIT')?.amount || 0
+  //       : paymentBreakdown.payments.reduce((sum, payment) => sum + payment.amount, 0);
+
+  //     const { clientSecret } = await createPaymentIntent(
+  //       token,
+  //       metadata.rentalOrderId,
+  //       selectedPaymentType,
+  //       'STRIPE'
+  //     );
+
+  //     const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+  //       payment_method: paymentMethod.id,
+  //     });
+
+  //     if (confirmError) {
+  //       throw new Error(confirmError.message);
+  //     }
+
+  //     if (paymentIntent.status === 'succeeded') {
+  //       console.log('Payment succeeded!');
+  //       setPaymentSuccess(true);
+  //       setError(null);
+  //       // Handle successful payment (e.g., show success message, redirect)
+  //     } else {
+  //       throw new Error('Payment failed. Please try again.');
+  //     }
+  //   } catch (err) {
+  //     setPaymentSuccess(false);
+  //     setError(err instanceof Error ? err.message : 'An error occurred during payment.');
+  //   } finally {
+  //     setProcessing(false);
+  //   }
+  // };
+
+  // const handleRevolutPayment = async () => {
+  //   if (!paymentBreakdown) {
+  //     setError('Payment breakdown is not available.');
+  //     return;
+  //   }
+
+  //   setProcessing(true);
+
+  //   try {
+  //     const { clientSecret } = await createPaymentIntent(
+  //       token,
+  //       metadata.rentalOrderId,
+  //       selectedPaymentType,
+  //       'REVOLUT'
+  //     );
+
+  //     // Cast the response to RevolutPaymentResponse
+  //     const revolutResponse = clientSecret as unknown as RevolutPaymentResponse;
+
+  //     if (revolutResponse.paymentProvider !== 'revolut' || !revolutResponse.redirectUrl) {
+  //       throw new Error('Invalid Revolut payment response');
+  //     }
+
+  //     setRevolutRedirectUrl(revolutResponse.redirectUrl);
+  //     setPaymentSuccess(true);
+  //     setError(null);
+  //     // You can choose to automatically redirect the user or provide a button to redirect
+  //     // window.location.href = revolutResponse.redirectUrl;
+  //   } catch (err) {
+  //     setPaymentSuccess(false);
+  //     setError(err instanceof Error ? err.message : 'An error occurred during Revolut payment setup.');
+  //   } finally {
+  //     setProcessing(false);
+  //   }
+  // };
+
+  // const handleRevolutPayment = async () => {
+  //   if (!paymentBreakdown) {
+  //     setError('Payment breakdown is not available.');
+  //     return;
+  //   }
+
+  //   setProcessing(true);
+
+  //   try {
+  //     const response = await createPaymentIntent(
+  //       token,
+  //       metadata.rentalOrderId,
+  //       selectedPaymentType,
+  //       'REVOLUT'
+  //     );
+
+  //     // Check if the response is a RevolutPaymentResponse
+  //     if ('redirectUrl' in response) {
+  //       const revolutResponse = response as RevolutPaymentResponse;
+  //       setRevolutRedirectUrl(revolutResponse.redirectUrl);
+  //       setPaymentSuccess(true);
+  //       setError(null);
+  //       // You can choose to automatically redirect the user or provide a button to redirect
+  //       // window.location.href = revolutResponse.redirectUrl;
+  //     } else {
+  //       throw new Error('Invalid Revolut payment response');
+  //     }
+  //   } catch (err) {
+  //     setPaymentSuccess(false);
+  //     setError(err instanceof Error ? err.message : 'An error occurred during Revolut payment setup.');
+  //   } finally {
+  //     setProcessing(false);
+  //   }
+  // };
 
   if (error) {
     return (
@@ -176,10 +331,23 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
         <h2 className="text-2xl font-bold text-white">Payment Details</h2>
       </div>
       <div className="p-6">
-        {paymentSuccess && (
+        {/* {paymentSuccess && (
           <div className="mb-6 bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-md">
             <p className="font-bold text-lg mb-2">Payment Successful!</p>
             <p>Your payment has been processed successfully. Thank you for your transaction.</p>
+          </div>
+        )} */}
+
+        {paymentSuccess && action === 'revolut' && revolutRedirectUrl && (
+          <div className="mb-6 bg-green-50 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-md">
+            <p className="font-bold text-lg mb-2">Redirecting to Revolut Payment Page</p>
+            <p>You will be redirected to complete your payment with Revolut. If you are not redirected automatically, please click the button below.</p>
+            <button
+              onClick={() => window.location.href = revolutRedirectUrl}
+              className="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300"
+            >
+              Go to Revolut Payment
+            </button>
           </div>
         )}
         <div className="mb-6">
@@ -240,8 +408,8 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
           onClick={handlePayment}
           disabled={processing || paymentSuccess}
           className={`w-full font-bold py-3 px-4 rounded focus:outline-none focus:shadow-outline transition duration-300 ${processing || paymentSuccess
-              ? 'bg-gray-400 cursor-not-allowed'
-              : 'bg-blue-500 hover:bg-blue-600 text-white'
+            ? 'bg-gray-400 cursor-not-allowed'
+            : 'bg-blue-500 hover:bg-blue-600 text-white'
             }`}
         >
           {processing

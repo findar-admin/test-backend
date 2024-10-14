@@ -114,7 +114,31 @@ export interface CreatePaymentIntentResponse {
   clientSecret: string;
 }
 
-export async function createPaymentIntent(token: string, rentalOrderId: string, paymentType: string, paymentProvider: string): Promise<CreatePaymentIntentResponse> {
+// export async function createPaymentIntent(token: string, rentalOrderId: string, paymentType: string, paymentProvider: string): Promise<CreatePaymentIntentResponse> {
+//   const response = await fetch(`${API_BASE_URL}/payments/create-payment/${rentalOrderId}?paymentType=${paymentType}&paymentProvider=${paymentProvider}`, {
+//     method: 'POST',
+//     headers: {
+//       'X-DeepLink-Token': token,
+//       'Accept': 'application/json',
+//       'Content-Type': 'application/json',
+//     }
+//   });
+
+//   if (!response.ok) {
+//     throw new Error('Failed to create payment intent');
+//   }
+
+//   return response.json();
+// }
+
+type PaymentResponse = CreatePaymentIntentResponse | RevolutPaymentResponse;
+
+export async function createPaymentIntent(
+  token: string, 
+  rentalOrderId: string, 
+  paymentType: string, 
+  paymentProvider: string
+): Promise<PaymentResponse> {
   const response = await fetch(`${API_BASE_URL}/payments/create-payment/${rentalOrderId}?paymentType=${paymentType}&paymentProvider=${paymentProvider}`, {
     method: 'POST',
     headers: {
@@ -128,5 +152,18 @@ export async function createPaymentIntent(token: string, rentalOrderId: string, 
     throw new Error('Failed to create payment intent');
   }
 
-  return response.json();
+  const data = await response.json();
+
+  if ('clientSecret' in data) {
+    return data as CreatePaymentIntentResponse;
+  } else if ('redirectUrl' in data) {
+    return data as RevolutPaymentResponse;
+  } else {
+    throw new Error('Invalid payment response format');
+  }
+}
+
+// Function to determine the type of the payment response
+export function isRevolutPaymentResponse(response: PaymentResponse): response is RevolutPaymentResponse {
+  return 'redirectUrl' in response;
 }
