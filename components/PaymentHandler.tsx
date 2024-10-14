@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchPaymentBreakdown, createPaymentIntent, PaymentBreakdown } from '@/lib/api';
+import { fetchPaymentBreakdown, createPaymentIntent, PaymentBreakdown, RevolutPaymentResponse } from '@/lib/api';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
@@ -25,6 +25,8 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
   const [paymentBreakdown, setPaymentBreakdown] = useState<PaymentBreakdown | null>(null);
   const [selectedPaymentType, setSelectedPaymentType] = useState<'SECURITY_DEPOSIT' | 'ALL'>('SECURITY_DEPOSIT');
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [revolutRedirectUrl, setRevolutRedirectUrl] = useState<string | null>(null);
+
 
   const stripe = useStripe();
   const elements = useElements();
@@ -83,7 +85,8 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
       const { clientSecret } = await createPaymentIntent(
         token,
         metadata.rentalOrderId,
-        selectedPaymentType
+        selectedPaymentType,
+        'STRIPE'
       );
 
       const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
@@ -110,9 +113,40 @@ const PaymentForm: React.FC<PaymentHandlerProps> = ({ token, action, metadata })
     }
   };
 
-  const handleRevolutPayment = () => {
-    // Implement Revolut payment logic here
-    setError('Revolut payment is not implemented yet.');
+  const handleRevolutPayment = async () => {
+    if (!paymentBreakdown) {
+      setError('Payment breakdown is not available.');
+      return;
+    }
+
+    setProcessing(true);
+
+    try {
+      const { clientSecret } = await createPaymentIntent(
+        token,
+        metadata.rentalOrderId,
+        selectedPaymentType,
+        'REVOLUT'
+      );
+
+      // Cast the response to RevolutPaymentResponse
+      const revolutResponse = clientSecret as unknown as RevolutPaymentResponse;
+
+      if (revolutResponse.paymentProvider !== 'revolut' || !revolutResponse.redirectUrl) {
+        throw new Error('Invalid Revolut payment response');
+      }
+
+      setRevolutRedirectUrl(revolutResponse.redirectUrl);
+      setPaymentSuccess(true);
+      setError(null);
+      // You can choose to automatically redirect the user or provide a button to redirect
+      // window.location.href = revolutResponse.redirectUrl;
+    } catch (err) {
+      setPaymentSuccess(false);
+      setError(err instanceof Error ? err.message : 'An error occurred during Revolut payment setup.');
+    } finally {
+      setProcessing(false);
+    }
   };
 
   if (error) {

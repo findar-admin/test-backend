@@ -42,6 +42,13 @@ export interface PaymentBreakdown {
   currency: string
 }
 
+export interface RevolutPaymentResponse {
+  totalAmount: number;
+  feeAmount: number;
+  paymentProvider: string;
+  redirectUrl: string;
+}
+
 export async function fetchPaymentBreakdown(rentalOrderId: string, token: string): Promise<PaymentBreakdown> {
   const response = await fetch(`${API_BASE_URL}/rental-orders/${rentalOrderId}/payment-breakdown`, {
     headers: { 
@@ -107,8 +114,8 @@ export interface CreatePaymentIntentResponse {
   clientSecret: string;
 }
 
-export async function createPaymentIntent(token: string, rentalOrderId: string, paymentType: string): Promise<CreatePaymentIntentResponse> {
-  const response = await fetch(`${API_BASE_URL}/payments/create-payment-intent/${rentalOrderId}?paymentType=${paymentType}`, {
+export async function createPaymentIntent(token: string, rentalOrderId: string, paymentType: string, paymentProvider: string): Promise<CreatePaymentIntentResponse> {
+  const response = await fetch(`${API_BASE_URL}/payments/create-payment/${rentalOrderId}?paymentType=${paymentType}&paymentProvider=${paymentProvider}`, {
     method: 'POST',
     headers: {
       'X-DeepLink-Token': token,
